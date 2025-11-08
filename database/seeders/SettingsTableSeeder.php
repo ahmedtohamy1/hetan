@@ -13,6 +13,6 @@ class SettingsTableSeeder extends Seeder
      */
     public function run(): void
     {
-        Setting::setValue('global_donation_number', 'DON-000001');
+        Setting::setValue('global_donation_number', '01205100202');
     }
 }

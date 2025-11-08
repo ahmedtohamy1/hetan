@@ -4,7 +4,7 @@
       <header class="hero-section">
         <div class="hero-content">
           <h1 class="hero-title">عيد الخير</h1>
-          <p class="hero-subtitle">ساهم في نشر الفرح والخير في عيد الفطر المبارك</p>
+          <p class="hero-subtitle">ساهم في نشر الفرح والخير في عيد الاضحي المبارك</p>
         </div>
       </header>
 
@@ -30,11 +30,20 @@
                 <span v-if="isSearching">جاري البحث...</span>
                 <span v-else>بحث</span>
               </button>
+              <button
+                @click="showAllDonators"
+                class="show-all-btn"
+                :disabled="isSearching"
+                title="عرض جميع المتبرعين"
+              >
+                <i class="fas fa-users"></i>
+                جميع المتبرعين
+              </button>
             </div>
 
             <!-- Search Results -->
             <div v-if="searchResults.length > 0" class="search-results">
-              <h3>النتائج:</h3>
+              <h3>{{ showAllMode ? 'جميع المتبرعين' : 'نتائج البحث' }} ({{ searchResults.length }})</h3>
               <div class="results-list">
                 <div
                   v-for="donator in searchResults"
@@ -53,6 +62,24 @@
                   </div>
                 </div>
               </div>
+            </div>
+
+            <!-- Load More Button -->
+            <div v-if="showAllMode && hasMorePages" class="load-more-container">
+              <button
+                @click="loadMoreDonators"
+                class="load-more-btn"
+                :disabled="isLoadingMore"
+              >
+                <span v-if="isLoadingMore">
+                  <i class="fas fa-spinner fa-spin"></i>
+                  جاري التحميل...
+                </span>
+                <span v-else>
+                  <i class="fas fa-plus"></i>
+                  عرض المزيد ({{ searchResults.length }} من أصل المزيد)
+                </span>
+              </button>
             </div>
 
             <div v-else-if="searchQuery && !isSearching" class="no-results">
@@ -129,8 +156,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
 import axios from 'axios'
+import { onMounted, ref } from 'vue'
 
 // Reactive data
 const searchQuery = ref('')
@@ -140,6 +167,10 @@ const globalDonationNumber = ref('01205100202')
 const isSearching = ref(false)
 const isSubmitting = ref(false)
 const showSuccess = ref(false)
+const showAllMode = ref(false)
+const currentPage = ref(1)
+const hasMorePages = ref(false)
+const isLoadingMore = ref(false)
 const donationForm = ref({
   amount: '',
   donor_phone_number: ''
@@ -165,8 +196,56 @@ const debouncedSearch = () => {
   }, 300)
 }
 
+// Show all donators
+const showAllDonators = async () => {
+  showAllMode.value = true
+  searchQuery.value = '' // Clear search query
+  currentPage.value = 1 // Reset to first page
+  isSearching.value = true
+  try {
+    // Fetch first page of donators
+    const response = await axios.get('/donators', {
+      params: { page: currentPage.value }
+    })
+    searchResults.value = response.data.data
+    hasMorePages.value = response.data.current_page < response.data.last_page
+    currentPage.value = response.data.current_page
+  } catch (error) {
+    console.error('Load all donators error:', error)
+    searchResults.value = []
+    hasMorePages.value = false
+  } finally {
+    isSearching.value = false
+  }
+}
+
+// Load more donators
+const loadMoreDonators = async () => {
+  if (!hasMorePages.value || isLoadingMore.value) return
+
+  isLoadingMore.value = true
+  try {
+    const nextPage = currentPage.value + 1
+    const response = await axios.get('/donators', {
+      params: { page: nextPage }
+    })
+
+    // Append new results to existing ones
+    searchResults.value = [...searchResults.value, ...response.data.data]
+    hasMorePages.value = response.data.current_page < response.data.last_page
+    currentPage.value = response.data.current_page
+  } catch (error) {
+    console.error('Load more donators error:', error)
+  } finally {
+    isLoadingMore.value = false
+  }
+}
+
 // Search function
 const search = async () => {
+  showAllMode.value = false // Exit show all mode when searching
+  currentPage.value = 1 // Reset pagination
+  hasMorePages.value = false // Reset pagination
   if (!searchQuery.value.trim()) {
     searchResults.value = []
     return
@@ -189,6 +268,7 @@ const search = async () => {
 // Select donator
 const selectDonator = (donator) => {
   selectedDonator.value = donator
+  showAllMode.value = false // Clear show all mode when selecting
   // Clear previous form data
   donationForm.value = {
     amount: '',
@@ -222,6 +302,9 @@ const submitDonation = async () => {
     }
     searchQuery.value = ''
     searchResults.value = []
+    showAllMode.value = false
+    currentPage.value = 1
+    hasMorePages.value = false
 
   } catch (error) {
     console.error('Donation submission error:', error)
@@ -316,6 +399,7 @@ setTimeout(() => {
   display: flex;
   gap: 15px;
   margin-bottom: 25px;
+  flex-wrap: wrap;
 }
 
 .search-input {
@@ -353,6 +437,74 @@ setTimeout(() => {
 .search-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.show-all-btn {
+  padding: 15px 20px;
+  background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.show-all-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(23, 162, 184, 0.3);
+}
+
+.show-all-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.show-all-btn i {
+  font-size: 1rem;
+}
+
+/* Load More Button */
+.load-more-container {
+  text-align: center;
+  margin-top: 20px;
+  padding: 20px 0;
+}
+
+.load-more-btn {
+  padding: 15px 30px;
+  background: linear-gradient(135deg, #38a169 0%, #2f855a 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 4px 12px rgba(56, 161, 105, 0.3);
+}
+
+.load-more-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(56, 161, 105, 0.4);
+}
+
+.load-more-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.load-more-btn i {
+  font-size: 1rem;
 }
 
 /* Search Results */
@@ -607,7 +759,8 @@ setTimeout(() => {
     flex-direction: column;
   }
 
-  .search-btn {
+  .search-btn,
+  .show-all-btn {
     width: 100%;
   }
 
@@ -619,6 +772,11 @@ setTimeout(() => {
 
   .donate-btn {
     width: 100%;
+  }
+
+  .load-more-btn {
+    width: 100%;
+    justify-content: center;
   }
 }
 </style>

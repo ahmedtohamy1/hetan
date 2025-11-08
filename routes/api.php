@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AdminAuthController;
 use App\Http\Controllers\Api\DonatorController;
 use App\Http\Controllers\Api\DonationController;
 use App\Http\Controllers\Api\ImportController;
+use App\Http\Controllers\Api\SettingsController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -14,7 +15,7 @@ Route::get('/user', function (Request $request) {
 // Public routes (no authentication required)
 Route::get('donators', [DonatorController::class, 'index']); // For donation page search
 Route::post('donations', [DonationController::class, 'store']); // For donation confirmation
-Route::get('settings/global-donation-number', [SettingsController::class, 'getGlobalDonationNumber']); // Global donation number
+Route::get('settings/global-donation-number', [SettingsController::class, 'getGlobalDonationNumber']); // Global donation number for public page
 
 // Admin authentication routes
 Route::prefix('admin')->group(function () {
@@ -38,7 +39,7 @@ Route::prefix('admin')->group(function () {
         Route::delete('donations/{donation}', [DonationController::class, 'destroy']);
 
 
-        // Settings management
+        // Settings management (admin only)
         Route::get('settings/global-donation-number', [SettingsController::class, 'getGlobalDonationNumber']);
         Route::put('settings/global-donation-number', [SettingsController::class, 'updateGlobalDonationNumber']);
 

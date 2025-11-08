@@ -33,7 +33,7 @@
               <i class="fas fa-upload"></i>
               استيراد من Excel/CSV
             </button>
-            <button @click="showAddDonatorModal = true" class="action-btn secondary">
+            <button @click="openAddDonatorModal" class="action-btn secondary">
               <i class="fas fa-plus"></i>
               إضافة متبرع جديد
             </button>
@@ -191,7 +191,8 @@
                 <tr>
                   <th>المتبرع</th>
                   <th>المبلغ</th>
-                  <th>رقم الهاتف</th>
+                  <th>رقم هاتف المتبرع</th>
+                  <th>رقم التبرع المرسل إليه</th>
                   <th>الحالة</th>
                   <th>التاريخ</th>
                   <th>الإجراءات</th>
@@ -199,30 +200,62 @@
               </thead>
               <tbody>
                 <tr v-for="donation in filteredDonations" :key="donation.id">
-                  <td>{{ donation.donator.name }}</td>
-                  <td class="amount">{{ donation.amount }} جنيه</td>
+                  <td>
+                    <div class="donator-info">
+                      <strong>{{ donation.donator.name }}</strong>
+                      <small>{{ donation.donator.phone }}</small>
+                    </div>
+                  </td>
+                  <td class="amount">
+                    <strong>{{ donation.amount }} جنيه</strong>
+                  </td>
                   <td>{{ donation.donor_phone_number }}</td>
                   <td>
-                    <span class="status-badge" :class="donation.status">
-                      {{ getStatusText(donation.status) }}
-                    </span>
+                    <span class="donation-number">{{ donation.global_donation_number || 'غير محدد' }}</span>
                   </td>
-                  <td>{{ formatDate(donation.created_at) }}</td>
                   <td>
-                    <button
-                      v-if="donation.status === 'pending'"
-                      @click="updateDonationStatus(donation, 'confirmed')"
-                      class="action-btn small success"
+                    <select
+                      :value="donation.status"
+                      @change="updateDonationStatus(donation, $event.target.value)"
+                      class="status-select"
+                      :class="donation.status"
                     >
-                      تأكيد
-                    </button>
-                    <button
-                      v-if="donation.status === 'confirmed'"
-                      @click="updateDonationStatus(donation, 'completed')"
-                      class="action-btn small primary"
-                    >
-                      اكتمال
-                    </button>
+                      <option value="pending">في الانتظار</option>
+                      <option value="confirmed">مؤكدة</option>
+                      <option value="completed">مكتملة</option>
+                    </select>
+                  </td>
+                  <td>
+                    <div class="date-info">
+                      {{ formatDate(donation.created_at) }}
+                      <small>{{ formatTime(donation.created_at) }}</small>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="actions-group">
+                      <button
+                        @click="viewDonationDetails(donation)"
+                        class="action-btn small info"
+                        title="عرض التفاصيل"
+                      >
+                        <i class="fas fa-eye"></i>
+                      </button>
+                      <button
+                        v-if="donation.status !== 'pending'"
+                        @click="rollbackDonationStatus(donation)"
+                        class="action-btn small warning"
+                        title="تراجع عن الحالة"
+                      >
+                        <i class="fas fa-undo"></i>
+                      </button>
+                      <button
+                        @click="deleteDonation(donation)"
+                        class="action-btn small danger"
+                        title="حذف التبرع"
+                      >
+                        <i class="fas fa-trash"></i>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               </tbody>
@@ -280,6 +313,120 @@
         </div>
       </div>
     </main>
+
+    <!-- Donation Details Modal -->
+    <div v-if="showDonationDetailsModal" class="modal" @click="closeDonationDetailsModal">
+      <div class="modal-content large" @click.stop>
+        <div class="modal-header">
+          <h3>تفاصيل التبرع</h3>
+          <button @click="closeDonationDetailsModal" class="close-btn">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+
+        <div class="modal-body" v-if="selectedDonation">
+          <div class="donation-details-grid">
+            <div class="detail-section">
+              <h4>معلومات المتبرع</h4>
+              <div class="detail-grid">
+                <div class="detail-item">
+                  <label>الاسم:</label>
+                  <span>{{ selectedDonation.donator.name }}</span>
+                </div>
+                <div class="detail-item">
+                  <label>رقم الهاتف:</label>
+                  <span>{{ selectedDonation.donator.phone }}</span>
+                </div>
+                <div class="detail-item">
+                  <label>رقم التبرع الخاص:</label>
+                  <span class="donation-number">{{ selectedDonation.donator.donation_number }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="detail-section">
+              <h4>معلومات التبرع</h4>
+              <div class="detail-grid">
+                <div class="detail-item">
+                  <label>المبلغ:</label>
+                  <span class="amount-large">{{ selectedDonation.amount }} جنيه</span>
+                </div>
+                <div class="detail-item">
+                  <label>رقم هاتف المتبرع:</label>
+                  <span>{{ selectedDonation.donor_phone_number }}</span>
+                </div>
+                <div class="detail-item">
+                  <label>رقم التبرع المرسل إليه:</label>
+                  <span class="donation-number">{{ selectedDonation.global_donation_number || 'غير محدد' }}</span>
+                </div>
+                <div class="detail-item">
+                  <label>الحالة:</label>
+                  <span class="status-badge large" :class="selectedDonation.status">
+                    {{ getStatusText(selectedDonation.status) }}
+                  </span>
+                </div>
+                <div class="detail-item">
+                  <label>تاريخ التبرع:</label>
+                  <span>{{ formatDateTime(selectedDonation.created_at) }}</span>
+                </div>
+                <div class="detail-item" v-if="selectedDonation.updated_at !== selectedDonation.created_at">
+                  <label>آخر تحديث:</label>
+                  <span>{{ formatDateTime(selectedDonation.updated_at) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="donation-actions">
+            <h4>الإجراءات السريعة</h4>
+            <div class="actions-grid">
+              <button
+                @click="updateDonationStatus(selectedDonation, 'pending')"
+                :disabled="selectedDonation.status === 'pending'"
+                class="action-btn large"
+                :class="{ disabled: selectedDonation.status === 'pending' }"
+              >
+                <i class="fas fa-clock"></i>
+                في الانتظار
+              </button>
+              <button
+                @click="updateDonationStatus(selectedDonation, 'confirmed')"
+                :disabled="selectedDonation.status === 'confirmed'"
+                class="action-btn large success"
+                :class="{ disabled: selectedDonation.status === 'confirmed' }"
+              >
+                <i class="fas fa-check"></i>
+                تأكيد
+              </button>
+              <button
+                @click="updateDonationStatus(selectedDonation, 'completed')"
+                :disabled="selectedDonation.status === 'completed'"
+                class="action-btn large primary"
+                :class="{ disabled: selectedDonation.status === 'completed' }"
+              >
+                <i class="fas fa-check-circle"></i>
+                اكتمال
+              </button>
+              <button
+                v-if="selectedDonation.status !== 'pending'"
+                @click="rollbackDonationStatus(selectedDonation)"
+                class="action-btn large warning"
+              >
+                <i class="fas fa-undo"></i>
+                تراجع
+              </button>
+              <button
+                @click="deleteDonation(selectedDonation)"
+                class="action-btn large danger"
+              >
+                <i class="fas fa-trash"></i>
+                حذف
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Import Modal -->
     <div v-if="showImportModal" class="modal" @click="showImportModal = false">
@@ -369,6 +516,31 @@
             >
           </div>
 
+          <div class="form-group">
+            <label for="donationNumber">رقم التبرع</label>
+            <div class="input-with-button">
+              <input
+                id="donationNumber"
+                v-model="donatorForm.donation_number"
+                type="text"
+                required
+                class="form-input"
+                placeholder="مثال: DON-000123 أو رقم هاتف"
+                @focus="handleDonationNumberFocus"
+              >
+              <button
+                type="button"
+                @click="autoFillDonationNumber"
+                class="generate-btn"
+                title="توليد رقم تلقائي"
+              >
+                <i class="fas fa-magic"></i>
+                تلقائي
+              </button>
+            </div>
+            <small class="form-hint">يجب أن يكون فريد ويمكن أن يكون رقم هاتف أو كود مخصص</small>
+          </div>
+
           <div class="modal-footer">
             <button type="submit" class="btn primary" :disabled="isSaving">
               <span v-if="isSaving">
@@ -387,7 +559,7 @@
 
 <script setup>
 import axios from 'axios'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -424,7 +596,9 @@ const donationsFilter = ref('')
 // Modals
 const showImportModal = ref(false)
 const showAddDonatorModal = ref(false)
+const showDonationDetailsModal = ref(false)
 const editingDonator = ref(null)
+const selectedDonation = ref(null)
 
 // Forms
 const selectedFile = ref(null)
@@ -432,8 +606,15 @@ const isImporting = ref(false)
 const isSaving = ref(false)
 const donatorForm = ref({
   name: '',
-  phone: ''
+  phone: '',
+  donation_number: ''
 })
+
+// Settings
+const globalDonationNumber = ref('')
+const originalGlobalDonationNumber = ref('')
+const isSavingGlobalDonationNumber = ref(false)
+const globalDonationNumberError = ref('')
 
 // Computed
 const filteredDonators = computed(() => {
@@ -450,6 +631,25 @@ const filteredDonations = computed(() => {
 })
 
 // Methods
+const generateDonationNumber = () => {
+  const timestamp = Date.now()
+  const random1 = Math.floor(Math.random() * 100)
+  const random2 = Math.floor(Math.random() * 1000)
+  const random3 = Math.floor(Math.random() * 100)
+  return `DON-${timestamp.toString().slice(-4)}${random1.toString().padStart(2, '0')}${random2.toString().padStart(3, '0')}${random3.toString().padStart(2, '0')}`
+}
+
+const autoFillDonationNumber = () => {
+  // Always generate a new number when clicked
+  donatorForm.value.donation_number = generateDonationNumber()
+}
+
+const handleDonationNumberFocus = () => {
+  if (!donatorForm.value.donation_number || !donatorForm.value.donation_number.trim()) {
+    autoFillDonationNumber()
+  }
+}
+
 const logout = async () => {
   try {
     await axios.post('/admin/logout')
@@ -612,7 +812,8 @@ const editDonator = (donator) => {
   editingDonator.value = donator
   donatorForm.value = {
     name: donator.name,
-    phone: donator.phone
+    phone: donator.phone,
+    donation_number: donator.donation_number
   }
 }
 
@@ -621,24 +822,94 @@ const closeDonatorModal = () => {
   editingDonator.value = null
   donatorForm.value = {
     name: '',
-    phone: ''
+    phone: '',
+    donation_number: ''
   }
 }
 
+const openAddDonatorModal = () => {
+  showAddDonatorModal.value = true
+  // Auto-generate donation number when opening the modal
+  setTimeout(() => {
+    autoFillDonationNumber()
+  }, 100)
+}
+
 const saveDonator = async () => {
+  // Check if user is logged in
+  const token = localStorage.getItem('admin_token')
+  if (!token) {
+    alert('يجب تسجيل الدخول أولاً')
+    router.push('/admin')
+    return
+  }
+
+  // Validate required fields
+  if (!donatorForm.value.name || !donatorForm.value.name.trim()) {
+    alert('يرجى إدخال اسم المتبرع')
+    return
+  }
+  if (!donatorForm.value.phone || !donatorForm.value.phone.trim()) {
+    alert('يرجى إدخال رقم هاتف المتبرع')
+    return
+  }
+  if (!donatorForm.value.donation_number || !donatorForm.value.donation_number.trim()) {
+    alert('يرجى إدخال رقم التبرع')
+    return
+  }
+
+  // Check for duplicate donation number in current donators list
+  const existingDonator = donators.value.find(d =>
+    d.donation_number === donatorForm.value.donation_number.trim() &&
+    (!editingDonator.value || d.id !== editingDonator.value.id)
+  )
+  if (existingDonator) {
+    alert('رقم التبرع هذا موجود بالفعل. يرجى اختيار رقم آخر.')
+    return
+  }
+
   isSaving.value = true
   try {
-    if (editingDonator.value) {
-      await axios.put(`/admin/donators/${editingDonator.value.id}`, donatorForm.value)
-    } else {
-      await axios.post('/admin/donators', donatorForm.value)
+    // Prepare data for sending
+    const dataToSend = {
+      name: donatorForm.value.name.trim(),
+      phone: donatorForm.value.phone.trim(),
+      donation_number: donatorForm.value.donation_number.trim()
     }
 
+    console.log('Saving donator:', dataToSend)
+    let response
+    if (editingDonator.value) {
+      response = await axios.put(`/admin/donators/${editingDonator.value.id}`, dataToSend)
+      console.log('Update response:', response)
+    } else {
+      response = await axios.post('/admin/donators', dataToSend)
+      console.log('Create response:', response)
+    }
+
+    alert('تم حفظ المتبرع بنجاح!')
     closeDonatorModal()
     loadData(donatorsPagination.value.current_page)
   } catch (error) {
     console.error('Save donator error:', error)
-    alert('حدث خطأ في حفظ البيانات')
+    if (error.response) {
+      console.error('Response data:', error.response.data)
+      console.error('Response status:', error.response.status)
+      if (error.response.status === 401) {
+        alert('انتهت صلاحية الجلسة. يرجى إعادة تسجيل الدخول.')
+      } else if (error.response.status === 422) {
+        const errors = error.response.data.errors
+        let errorMessage = 'خطأ في البيانات:\n'
+        for (const field in errors) {
+          errorMessage += `${field}: ${errors[field].join(', ')}\n`
+        }
+        alert(errorMessage)
+      } else {
+        alert('حدث خطأ في حفظ البيانات: ' + (error.response.data.message || 'خطأ غير معروف'))
+      }
+    } else {
+      alert('حدث خطأ في الاتصال بالخادم')
+    }
   } finally {
     isSaving.value = false
   }
@@ -675,14 +946,82 @@ const getStatusText = (status) => {
   return statusMap[status] || status
 }
 
+const viewDonationDetails = (donation) => {
+  selectedDonation.value = donation
+  showDonationDetailsModal.value = true
+}
+
+const closeDonationDetailsModal = () => {
+  showDonationDetailsModal.value = false
+  selectedDonation.value = null
+}
+
+const rollbackDonationStatus = async (donation) => {
+  let newStatus = 'pending'
+  if (donation.status === 'completed') {
+    newStatus = 'confirmed'
+  } else if (donation.status === 'confirmed') {
+    newStatus = 'pending'
+  }
+
+  if (!confirm(`هل أنت متأكد من تراجع حالة التبرع إلى "${getStatusText(newStatus)}"؟`)) return
+
+  try {
+    await updateDonationStatus(donation, newStatus)
+    if (selectedDonation.value && selectedDonation.value.id === donation.id) {
+      selectedDonation.value.status = newStatus
+    }
+  } catch (error) {
+    console.error('Rollback donation status error:', error)
+  }
+}
+
+const deleteDonation = async (donation) => {
+  if (!confirm('هل أنت متأكد من حذف هذا التبرع نهائياً؟ لا يمكن التراجع عن هذا الإجراء.')) return
+
+  try {
+    await axios.delete(`/admin/donations/${donation.id}`)
+    loadData(donatorsPagination.value.current_page)
+    closeDonationDetailsModal()
+    alert('تم حذف التبرع بنجاح')
+  } catch (error) {
+    console.error('Delete donation error:', error)
+    alert('حدث خطأ في الحذف')
+  }
+}
+
 const formatDate = (dateString) => {
   return new Date(dateString).toLocaleDateString('ar-EG')
 }
 
+const formatTime = (dateString) => {
+  return new Date(dateString).toLocaleTimeString('ar-EG', {
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+const formatDateTime = (dateString) => {
+  return new Date(dateString).toLocaleString('ar-EG', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  })
+}
+
+// Watch active tab to load settings when needed
+watch(activeTab, async (newTab) => {
+  if (newTab === 'settings') {
+    await loadGlobalDonationNumber()
+  }
+})
+
 // Lifecycle
-onMounted(async () => {
+onMounted(() => {
   loadData(1)
-  await loadGlobalDonationNumber()
 })
 </script>
 
@@ -1109,6 +1448,50 @@ onMounted(async () => {
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
+.form-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6c757d;
+}
+
+.input-with-button {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.input-with-button .form-input {
+  flex: 1;
+}
+
+.generate-btn {
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9em;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  min-width: 80px;
+  justify-content: center;
+}
+
+.generate-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(72, 187, 120, 0.3);
+}
+
+.generate-btn:active {
+  transform: translateY(0);
+}
+
 .filter-select {
   padding: 8px 12px;
   border: 1px solid #e2e8f0;
@@ -1295,6 +1678,175 @@ onMounted(async () => {
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
+  }
+
+  /* Enhanced Donations Table */
+  .donator-info strong {
+    display: block;
+    color: #2d3748;
+  }
+
+  .donator-info small {
+    display: block;
+    color: #718096;
+    font-size: 0.85em;
+    margin-top: 2px;
+  }
+
+  .amount {
+    font-weight: 700;
+    color: #38a169;
+  }
+
+  .donation-number {
+    font-family: 'Courier New', monospace;
+    background: #667eea;
+    color: white;
+    padding: 3px 6px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-weight: 600;
+  }
+
+  .status-select {
+    padding: 4px 8px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: white;
+    font-size: 0.85em;
+  }
+
+  .status-select.pending {
+    border-color: #ffc107;
+    color: #856404;
+  }
+
+  .status-select.confirmed {
+    border-color: #17a2b8;
+    color: #138496;
+  }
+
+  .status-select.completed {
+    border-color: #28a745;
+    color: #155724;
+  }
+
+  .date-info {
+    text-align: center;
+  }
+
+  .date-info strong {
+    display: block;
+    color: #2d3748;
+  }
+
+  .date-info small {
+    display: block;
+    color: #718096;
+    font-size: 0.8em;
+    margin-top: 2px;
+  }
+
+  .actions-group {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+  }
+
+  .action-btn.info {
+    background: #17a2b8;
+    color: white;
+  }
+
+  .action-btn.info:hover:not(:disabled) {
+    background: #138496;
+  }
+
+  /* Donation Details Modal */
+  .modal-content.large {
+    max-width: 800px;
+    width: 95%;
+  }
+
+  .donation-details-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+    margin-bottom: 30px;
+  }
+
+  .detail-section h4 {
+    color: #2d3748;
+    margin: 0 0 15px 0;
+    font-size: 1.2em;
+    border-bottom: 2px solid #667eea;
+    padding-bottom: 8px;
+  }
+
+  .detail-grid {
+    display: grid;
+    gap: 12px;
+  }
+
+  .detail-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #f7fafc;
+  }
+
+  .detail-item label {
+    font-weight: 600;
+    color: #4a5568;
+    min-width: 140px;
+  }
+
+  .detail-item span {
+    color: #2d3748;
+    text-align: left;
+  }
+
+  .amount-large {
+    font-size: 1.5em;
+    font-weight: 700;
+    color: #38a169;
+  }
+
+  .status-badge.large {
+    font-size: 0.9em;
+    padding: 6px 12px;
+  }
+
+  .donation-actions h4 {
+    color: #2d3748;
+    margin: 0 0 15px 0;
+    font-size: 1.2em;
+  }
+
+  .actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+  }
+
+  .action-btn.large {
+    padding: 12px 16px;
+    font-size: 0.9em;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    min-height: 60px;
+  }
+
+  .action-btn.large i {
+    font-size: 1.2em;
+  }
+
+  .action-btn.large.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 }
 </style>

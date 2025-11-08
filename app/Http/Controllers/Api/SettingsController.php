@@ -14,7 +14,7 @@ class SettingsController extends Controller
      */
     public function getGlobalDonationNumber(): JsonResponse
     {
-        $donationNumber = Setting::getValue('global_donation_number', 'DON-000001');
+        $donationNumber = Setting::getValue('global_donation_number', '01205100202');
 
         return response()->json([
             'global_donation_number' => $donationNumber
