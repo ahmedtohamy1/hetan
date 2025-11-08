@@ -19,7 +19,7 @@
                 @input="debouncedSearch"
                 type="text"
                 class="search-input"
-                placeholder="ابحث بالاسم أو رقم الهاتف..."
+                placeholder="ابحث بالاسم أو رقم الواتساب... المسجلين في النظام"
                 dir="rtl"
               >
               <button
@@ -45,22 +45,20 @@
             <div v-if="searchResults.length > 0" class="search-results">
               <h3>{{ showAllMode ? 'جميع المتبرعين' : 'نتائج البحث' }} ({{ searchResults.length }})</h3>
               <div class="results-list">
-                <div
-                  v-for="donator in searchResults"
-                  :key="donator.id"
-                  class="result-item"
-                  @click="selectDonator(donator)"
-                  :class="{ selected: selectedDonator?.id === donator.id }"
-                >
-                  <div class="donator-info">
-                    <h4>{{ donator.name }}</h4>
-                    <p>{{ donator.phone }}</p>
-                    <small>رقم التبرع: {{ donator.donation_number }}</small>
+                  <div
+                    v-for="donator in searchResults"
+                    :key="donator.id"
+                    class="result-item"
+                    @click="selectDonator(donator)"
+                    :class="{ selected: selectedDonator?.id === donator.id }"
+                  >
+                    <div class="donator-info">
+                      <h4>{{ donator.name }}</h4>
+                    </div>
+                    <div class="select-indicator">
+                      <i class="fas fa-check" v-if="selectedDonator?.id === donator.id"></i>
+                    </div>
                   </div>
-                  <div class="select-indicator">
-                    <i class="fas fa-check" v-if="selectedDonator?.id === donator.id"></i>
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -119,14 +117,26 @@
               </div>
 
               <div class="form-group">
-                <label for="phone">رقم هاتفك</label>
+                <label for="phone">الرقم المحول منه</label>
                 <input
                   id="phone"
                   v-model="donationForm.donor_phone_number"
                   type="tel"
                   required
                   class="form-input"
-                  placeholder="أدخل رقم هاتفك"
+                  placeholder="أدخل الرقم المحول منه"
+                >
+              </div>
+
+              <div class="form-group">
+                <label for="whatsapp">رقم الواتساب</label>
+                <input
+                  id="whatsapp"
+                  v-model="donationForm.whatsapp_number"
+                  type="tel"
+                  required
+                  class="form-input"
+                  placeholder="أدخل رقم الواتساب"
                 >
               </div>
 
@@ -173,7 +183,8 @@ const hasMorePages = ref(false)
 const isLoadingMore = ref(false)
 const donationForm = ref({
   amount: '',
-  donor_phone_number: ''
+  donor_phone_number: '',
+  whatsapp_number: ''
 })
 
 // Load global donation number
@@ -272,7 +283,8 @@ const selectDonator = (donator) => {
   // Clear previous form data
   donationForm.value = {
     amount: '',
-    donor_phone_number: ''
+    donor_phone_number: '',
+    whatsapp_number: ''
   }
 }
 
@@ -280,12 +292,19 @@ const selectDonator = (donator) => {
 const submitDonation = async () => {
   if (!selectedDonator.value) return
 
+  // Validate WhatsApp number matches donor's phone
+  if (donationForm.value.whatsapp_number !== selectedDonator.value.phone) {
+    alert('فشل التأكيد: رقم الواتساب غير مطابق للرقم المسجل')
+    return
+  }
+
   isSubmitting.value = true
   try {
     const donationData = {
       donator_id: selectedDonator.value.id,
       amount: parseFloat(donationForm.value.amount),
       donor_phone_number: donationForm.value.donor_phone_number,
+      whatsapp_number: donationForm.value.whatsapp_number,
       global_donation_number: globalDonationNumber.value
     }
 
@@ -298,7 +317,8 @@ const submitDonation = async () => {
     selectedDonator.value = null
     donationForm.value = {
       amount: '',
-      donor_phone_number: ''
+      donor_phone_number: '',
+      whatsapp_number: ''
     }
     searchQuery.value = ''
     searchResults.value = []
@@ -546,19 +566,10 @@ setTimeout(() => {
 }
 
 .donator-info h4 {
-  margin: 0 0 5px 0;
+  margin: 0;
   color: #2d3748;
   font-weight: 600;
-}
-
-.donator-info p {
-  margin: 0 0 5px 0;
-  color: #4a5568;
-}
-
-.donator-info small {
-  color: #718096;
-  font-size: 0.9rem;
+  text-align: center;
 }
 
 .select-indicator {

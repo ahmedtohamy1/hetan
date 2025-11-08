@@ -41,6 +41,7 @@ class DonationController extends Controller
             'donator_id' => 'required|exists:donators,id',
             'amount' => 'required|numeric|min:0.01|max:999999.99',
             'donor_phone_number' => 'required|string|max:20',
+            'whatsapp_number' => 'required|string|max:20',
             'global_donation_number' => 'required|string|max:50',
             'status' => 'sometimes|in:pending,confirmed,completed',
         ]);

@@ -11,6 +11,7 @@ class Donation extends Model
         'donator_id',
         'amount',
         'donor_phone_number',
+        'whatsapp_number',
         'global_donation_number',
         'status'
     ];
