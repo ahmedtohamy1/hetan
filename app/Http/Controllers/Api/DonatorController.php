@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Donator;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -27,6 +28,58 @@ class DonatorController extends Controller
         }
 
         $donators = $query->paginate(20);
+
+        return response()->json($donators);
+    }
+
+    /**
+     * Return donators that have no donations yet or within a specific month.
+     */
+    public function withoutDonations(Request $request): JsonResponse
+    {
+        $filter = $request->get('filter', 'never');
+        $query = Donator::query();
+
+        if ($filter === 'month') {
+            $monthInput = $request->get('month');
+            $month = null;
+
+            if ($monthInput) {
+                try {
+                    $month = Carbon::createFromFormat('Y-m', $monthInput)->startOfMonth();
+                } catch (\Exception $e) {
+                    // Fall back to current month if the provided value is invalid
+                    $month = Carbon::now()->startOfMonth();
+                }
+            } else {
+                $month = Carbon::now()->startOfMonth();
+            }
+
+            $startOfMonth = $month->copy()->startOfMonth();
+            $endOfMonth = $month->copy()->endOfMonth();
+
+            $query->whereDoesntHave('donations', function ($donationQuery) use ($startOfMonth, $endOfMonth) {
+                $donationQuery->whereBetween('created_at', [$startOfMonth, $endOfMonth]);
+            });
+        } else {
+            $query->doesntHave('donations');
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'LIKE', "%{$search}%")
+                    ->orWhere('phone', 'LIKE', "%{$search}%")
+                    ->orWhere('donation_number', 'LIKE', "%{$search}%");
+            });
+        }
+
+        $perPage = (int) $request->get('per_page', 20);
+        $perPage = max(1, min(100, $perPage));
+
+        $donators = $query
+            ->orderByDesc('created_at')
+            ->paginate($perPage);
 
         return response()->json($donators);
     }

@@ -104,6 +104,133 @@
         </div>
       </div>
 
+      <!-- Non Donors Tab -->
+      <div v-if="activeTab === 'nonDonors'" class="tab-content">
+        <div class="tab-header">
+          <div>
+            <h2>متبرعون لم يؤكدوا تبرعهم بعد</h2>
+            <p class="tab-subtitle">قائمة محدثة بالأشخاص الذين لم يتم تسجيل تبرعات لهم بعد استيراد بياناتهم.</p>
+          </div>
+          <div class="header-actions">
+            <button
+              @click="refreshNonDonors"
+              class="action-btn secondary"
+              :disabled="isNonDonorsLoading"
+            >
+              <i :class="['fas', isNonDonorsLoading ? 'fa-spinner fa-spin' : 'fa-sync-alt']"></i>
+              تحديث
+            </button>
+          </div>
+        </div>
+
+        <div class="donators-table">
+          <div class="table-header">
+            <div class="non-donors-filters">
+              <label class="filter-field">
+                <span>نوع الفلتر</span>
+                <select v-model="nonDonorsFilter" class="filter-select wide">
+                  <option value="never">لم يتبرعوا أبداً</option>
+                  <option value="month">لم يتبرعوا خلال شهر محدد</option>
+                </select>
+              </label>
+              <label v-if="isMonthFilter" class="filter-field">
+                <span>اختر الشهر</span>
+                <input
+                  v-model="nonDonorsMonth"
+                  type="month"
+                  class="month-input"
+                  :max="getCurrentMonthValue()"
+                >
+              </label>
+            </div>
+
+            <div class="non-donors-search-row">
+              <input
+                v-model="nonDonorsSearch"
+                type="text"
+                placeholder="ابحث بالاسم أو الهاتف أو رقم التبرع..."
+                class="table-search"
+              >
+              <button
+                v-if="nonDonorsSearch"
+                @click="clearNonDonorsSearch"
+                class="clear-search-btn"
+              >
+                مسح
+              </button>
+            </div>
+            <small class="table-hint">يتم تطبيق البحث بشكل تلقائي لتسهيل التواصل السريع.</small>
+          </div>
+
+          <div v-if="isNonDonorsLoading" class="non-donors-state loading">
+            <i class="fas fa-spinner fa-spin"></i>
+            <span>جاري تحميل القائمة...</span>
+          </div>
+
+          <div v-else-if="nonDonorsError" class="non-donors-state error">
+            <i class="fas fa-exclamation-triangle"></i>
+            <span>{{ nonDonorsError }}</span>
+          </div>
+
+          <div v-else-if="!nonDonors.length" class="non-donors-state empty">
+            <i class="fas fa-check-circle"></i>
+            <span>لا يوجد متبرعون معلقون حاليًا 🎉</span>
+          </div>
+
+          <div v-else class="table-responsive">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>الاسم</th>
+                  <th>رقم الهاتف</th>
+                  <th>رقم التبرع</th>
+                  <th>تاريخ الإضافة</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="donator in nonDonors" :key="donator.id">
+                  <td>{{ donator.name }}</td>
+                  <td>
+                    <div class="donor-contact">
+                      <strong>{{ donator.phone }}</strong>
+                      <small>استخدم الرقم للتذكير أو المتابعة</small>
+                    </div>
+                  </td>
+                  <td>
+                    <span class="donation-number">{{ donator.donation_number }}</span>
+                  </td>
+                  <td>{{ donator.created_at ? formatDate(donator.created_at) : '—' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div v-if="nonDonorsPagination.last_page > 1" class="pagination">
+          <button
+            @click="changeNonDonorsPage(nonDonorsPagination.current_page - 1)"
+            :disabled="nonDonorsPagination.current_page <= 1"
+            class="page-btn"
+          >
+            <i class="fas fa-chevron-right"></i>
+            السابق
+          </button>
+
+          <span class="page-info">
+            الصفحة {{ nonDonorsPagination.current_page }} من {{ nonDonorsPagination.last_page }}
+            (إجمالي {{ nonDonorsPagination.total }} شخص)
+          </span>
+
+          <button
+            @click="changeNonDonorsPage(nonDonorsPagination.current_page + 1)"
+            :disabled="nonDonorsPagination.current_page >= nonDonorsPagination.last_page"
+            class="page-btn"
+          >
+            التالي
+            <i class="fas fa-chevron-left"></i>
+          </button>
+        </div>
+      </div>
 
 
       <!-- Settings Tab -->
@@ -559,7 +686,7 @@
 
 <script setup>
 import axios from 'axios'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -568,6 +695,7 @@ const router = useRouter()
 const activeTab = ref('donators')
 const tabs = [
   { id: 'donators', label: 'المتبرعين', icon: 'fas fa-users' },
+  { id: 'nonDonors', label: 'لم يتبرعوا بعد', icon: 'fas fa-user-clock' },
   { id: 'donations', label: 'التبرعات', icon: 'fas fa-hand-holding-heart' },
   { id: 'settings', label: 'الإعدادات', icon: 'fas fa-cogs' },
   { id: 'stats', label: 'الإحصائيات', icon: 'fas fa-chart-bar' }
@@ -576,7 +704,16 @@ const tabs = [
 // Data
 const donators = ref([])
 const donations = ref([])
+const nonDonors = ref([])
+const isNonDonorsLoading = ref(false)
+const nonDonorsError = ref('')
+const hasLoadedNonDonors = ref(false)
 const donatorsPagination = ref({
+  current_page: 1,
+  last_page: 1,
+  total: 0
+})
+const nonDonorsPagination = ref({
   current_page: 1,
   last_page: 1,
   total: 0
@@ -591,6 +728,16 @@ const stats = ref({
 // Filters and search
 const donatorsSearch = ref('')
 const donationsFilter = ref('')
+const nonDonorsSearch = ref('')
+const nonDonorsFilter = ref('never')
+
+const getCurrentMonthValue = () => {
+  const today = new Date()
+  const month = (today.getMonth() + 1).toString().padStart(2, '0')
+  return `${today.getFullYear()}-${month}`
+}
+
+const nonDonorsMonth = ref(getCurrentMonthValue())
 
 
 // Modals
@@ -629,6 +776,10 @@ const filteredDonations = computed(() => {
   if (!donationsFilter.value) return donations.value
   return donations.value.filter(donation => donation.status === donationsFilter.value)
 })
+
+const isMonthFilter = computed(() => nonDonorsFilter.value === 'month')
+
+let nonDonorsSearchTimeout = null
 
 // Methods
 const generateDonationNumber = () => {
@@ -707,6 +858,60 @@ const loadData = async (page = 1) => {
       pendingDonations: 0
     }
   }
+}
+
+const loadNonDonors = async (page = 1) => {
+  isNonDonorsLoading.value = true
+  nonDonorsError.value = ''
+
+  try {
+    const response = await axios.get('/admin/donators/without-donations', {
+      params: {
+        page,
+        search: nonDonorsSearch.value ? nonDonorsSearch.value.trim() : undefined,
+        filter: nonDonorsFilter.value,
+        month: nonDonorsFilter.value === 'month' ? nonDonorsMonth.value : undefined
+      }
+    })
+
+    nonDonors.value = response.data.data || []
+    nonDonorsPagination.value = {
+      current_page: response.data.current_page || 1,
+      last_page: response.data.last_page || 1,
+      total: response.data.total || nonDonors.value.length
+    }
+    hasLoadedNonDonors.value = true
+  } catch (error) {
+    console.error('Load non-donors error:', error)
+    if (error.response?.status === 401) {
+      router.push('/admin')
+    }
+    nonDonors.value = []
+    nonDonorsPagination.value = {
+      current_page: 1,
+      last_page: 1,
+      total: 0
+    }
+    nonDonorsError.value = error.response?.data?.message || 'حدث خطأ أثناء تحميل قائمة غير المتبرعين'
+  } finally {
+    isNonDonorsLoading.value = false
+  }
+}
+
+const changeNonDonorsPage = async (page) => {
+  if (page >= 1 && page <= nonDonorsPagination.value.last_page) {
+    await loadNonDonors(page)
+  }
+}
+
+const refreshNonDonors = async () => {
+  const currentPage = nonDonorsPagination.value.current_page || 1
+  await loadNonDonors(currentPage)
+}
+
+const clearNonDonorsSearch = () => {
+  if (!nonDonorsSearch.value) return
+  nonDonorsSearch.value = ''
 }
 
 const handleFileSelect = (event) => {
@@ -1012,10 +1217,45 @@ const formatDateTime = (dateString) => {
   })
 }
 
-// Watch active tab to load settings when needed
+// Watch active tab to lazy-load heavy sections
 watch(activeTab, async (newTab) => {
   if (newTab === 'settings') {
     await loadGlobalDonationNumber()
+  }
+  if (newTab === 'nonDonors' && !hasLoadedNonDonors.value) {
+    await loadNonDonors(1)
+  }
+})
+
+watch(nonDonorsSearch, () => {
+  if (activeTab.value !== 'nonDonors') return
+  if (nonDonorsSearchTimeout) {
+    clearTimeout(nonDonorsSearchTimeout)
+  }
+  nonDonorsSearchTimeout = setTimeout(() => {
+    loadNonDonors(1)
+  }, 500)
+})
+
+watch(nonDonorsFilter, () => {
+  if (nonDonorsFilter.value === 'month' && !nonDonorsMonth.value) {
+    nonDonorsMonth.value = getCurrentMonthValue()
+  }
+  if (activeTab.value !== 'nonDonors') return
+  loadNonDonors(1)
+})
+
+watch(nonDonorsMonth, (newValue, oldValue) => {
+  if (!isMonthFilter.value) return
+  if (newValue === oldValue) return
+  if (!newValue) return
+  if (activeTab.value !== 'nonDonors') return
+  loadNonDonors(1)
+})
+
+onBeforeUnmount(() => {
+  if (nonDonorsSearchTimeout) {
+    clearTimeout(nonDonorsSearchTimeout)
   }
 })
 
@@ -1126,6 +1366,12 @@ onMounted(() => {
   font-size: 1.5rem;
 }
 
+.tab-subtitle {
+  margin: 8px 0 0;
+  color: #718096;
+  font-size: 0.95rem;
+}
+
 .header-actions {
   display: flex;
   gap: 15px;
@@ -1178,6 +1424,51 @@ onMounted(() => {
   border-bottom: 1px solid #e2e8f0;
 }
 
+.table-hint {
+  display: block;
+  margin-top: 10px;
+  color: #718096;
+  font-size: 0.85rem;
+}
+
+.non-donors-search-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.non-donors-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #4a5568;
+  font-size: 0.9rem;
+}
+
+.filter-select.wide {
+  min-width: 220px;
+}
+
+.month-input {
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 1rem;
+}
+
+.month-input:focus {
+  outline: none;
+  border-color: #a0611c;
+  box-shadow: 0 0 0 3px rgba(160, 97, 28, 0.15);
+}
+
 .table-search {
   width: 100%;
   padding: 12px 16px;
@@ -1186,6 +1477,59 @@ onMounted(() => {
   font-size: 1rem;
 }
 
+.clear-search-btn {
+  padding: 10px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+  font-weight: 500;
+  color: #a0611c;
+  transition: all 0.2s ease;
+}
+
+.clear-search-btn:hover {
+  border-color: #c1842c;
+  color: #c1842c;
+  background: #fff8eb;
+}
+
+.non-donors-state {
+  padding: 40px 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: #4a5568;
+}
+
+.non-donors-state i {
+  font-size: 2rem;
+}
+
+.non-donors-state.loading {
+  color: #a0611c;
+}
+
+.non-donors-state.error {
+  color: #e53e3e;
+}
+
+.non-donors-state.empty {
+  color: #38a169;
+}
+
+.donor-contact strong {
+  display: block;
+  color: #2d3748;
+}
+
+.donor-contact small {
+  display: block;
+  color: #718096;
+  font-size: 0.8rem;
+}
 .table-responsive {
   overflow-x: auto;
 }

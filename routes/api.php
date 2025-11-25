@@ -28,6 +28,7 @@ Route::prefix('admin')->group(function () {
     Route::middleware(['admin'])->prefix('admin')->group(function () {
         // Donator management (admin only)
         Route::get('donators', [DonatorController::class, 'index']);
+        Route::get('donators/without-donations', [DonatorController::class, 'withoutDonations']);
         Route::post('donators', [DonatorController::class, 'store']);
         Route::put('donators/{donator}', [DonatorController::class, 'update']);
         Route::delete('donators/{donator}', [DonatorController::class, 'destroy']);
